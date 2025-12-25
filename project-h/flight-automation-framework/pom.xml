@@ -3,9 +3,11 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.flightautomation</groupId>
-    <artifactId>flight-automation-framework</artifactId>
+    <groupId>com.automationtesting</groupId>
+    <artifactId>ixigo-automation-testing</artifactId>
     <version>1.0-SNAPSHOT</version>
+    <name>Automation Testing iXigo - Flight Search Framework</name>
+    <description>Comprehensive automation testing framework for iXigo flight search functionality</description>
 
     <properties>
         <maven.compiler.source>11</maven.compiler.source>
