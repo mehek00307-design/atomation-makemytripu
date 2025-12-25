@@ -1,0 +1,8 @@
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd" >
+<suite name="Flight Automation Suite" verbose="1" parallel="false">
+    <test name="Flight Search Tests">
+        <classes>
+            <class name="tests.FlightSearchTest" />
+        </classes>
+    </test>
+</suite>
