@@ -138,34 +138,194 @@ public class SearchResultsPage extends BasePage {
     }
 
     public List<Integer> getDisplayedPricesInOrder() {
-        waitForResultsToLoad();
-        List<WebElement> cards = getFlightCards();
-        List<Integer> prices = new ArrayList<>();
-        for (WebElement card : cards) {
-            String priceText = getPriceText(card);
-            int price = parsePrice(priceText);
-            if (price <= 0) {
-                price = extractPriceFromTextBlock(card.getText());
+        try {
+            waitForResultsToLoad();
+            List<WebElement> cards = getFlightCards();
+            List<Integer> prices = new ArrayList<>();
+            for (WebElement card : cards) {
+                try {
+                    String priceText = getPriceText(card);
+                    int price = parsePrice(priceText);
+                    if (price <= 0) {
+                        price = extractPriceFromTextBlock(card.getText());
+                    }
+                    if (price > 0) {
+                        prices.add(price);
+                    }
+                } catch (org.openqa.selenium.StaleElementReferenceException e) {
+                    // Skip stale elements
+                    System.out.println("Skipping stale element in price extraction");
+                    continue;
+                }
             }
-            if (price > 0) {
-                prices.add(price);
-            }
+            System.out.println("getDisplayedPricesInOrder extracted " + prices.size() + " prices: " + prices);
+            return prices;
+        } catch (org.openqa.selenium.StaleElementReferenceException e) {
+            System.out.println("Stale element in getDisplayedPricesInOrder, returning empty list to trigger retry");
+            return new ArrayList<>();
         }
-        return prices;
     }
 
     public boolean applyCheapestSort() {
+        System.out.println("Attempting to apply cheapest sort...");
+        
+        // Get prices before sort
+        List<Integer> pricesBeforeSort = extractPricesDirectly();
+        System.out.println("Prices BEFORE sort: " + pricesBeforeSort);
+        
+        // Try clicking cheapest directly
         if (clickFirstVisible(cheapestSortCandidates)) {
-            waitForResultsToLoad();
+            System.out.println("Successfully clicked cheapest sort option");
+            boolean sortCompleted = waitForSortToComplete();
+            List<Integer> pricesAfterSort = extractPricesDirectly();
+            System.out.println("Prices AFTER sort: " + pricesAfterSort);
+            System.out.println("Sort completed successfully: " + sortCompleted);
+            
+            // Check if sort actually changed the order
+            if (!pricesBeforeSort.equals(pricesAfterSort)) {
+                System.out.println("Sort DID change the order of results");
+            } else {
+                System.out.println("WARNING: Sort did NOT change the order - may not have worked");
+            }
             return true;
         }
+        
+        // Try opening sort menu first, then clicking cheapest
+        System.out.println("Cheapest sort not found directly, trying via sort menu...");
         if (clickFirstVisible(sortMenuCandidates)) {
+            System.out.println("Clicked sort menu");
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
             if (clickFirstVisible(cheapestSortCandidates)) {
-                waitForResultsToLoad();
+                System.out.println("Successfully clicked cheapest sort option from menu");
+                boolean sortCompleted = waitForSortToComplete();
+                List<Integer> pricesAfterSort = extractPricesDirectly();
+                System.out.println("Prices AFTER sort from menu: " + pricesAfterSort);
+                System.out.println("Sort from menu completed successfully: " + sortCompleted);
+                
+                // Check if sort actually changed the order
+                if (!pricesBeforeSort.equals(pricesAfterSort)) {
+                    System.out.println("Sort from menu DID change the order of results");
+                } else {
+                    System.out.println("WARNING: Sort from menu did NOT change the order - may not have worked");
+                }
                 return true;
             }
         }
+        
+        System.out.println("Could not find or click sort options");
         return false;
+    }
+
+    private boolean waitForSortToComplete() {
+        // Add a small delay to let the click register and sorting to start
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        
+        Duration timeout = Duration.ofSeconds(30);
+        try {
+            new org.openqa.selenium.support.ui.WebDriverWait(driver, timeout).until(webDriver -> {
+                // Wait for results to load first
+                if (!hasAnyResults(webDriver)) {
+                    System.out.println("No results found yet in waitForSortToComplete");
+                    return false;
+                }
+                
+                // Don't extract prices inside the wait - just check that we have results
+                // The sort may still be in progress
+                System.out.println("Results are present, continuing...");
+                return true;
+            });
+            
+            // After results are present, wait a bit longer for the actual sort to complete
+            System.out.println("Results loaded, now waiting for sort animations to complete...");
+            Thread.sleep(3000);
+            
+            // Now check if prices are actually sorted
+            List<Integer> prices = extractPricesDirectly();
+            System.out.println("Final prices after sort wait: " + prices);
+            
+            if (prices.size() >= 2) {
+                boolean isSorted = true;
+                for (int i = 1; i < prices.size(); i++) {
+                    if (prices.get(i) < prices.get(i - 1)) {
+                        System.out.println("Prices not sorted: " + prices.get(i-1) + " > " + prices.get(i));
+                        isSorted = false;
+                        break;
+                    }
+                }
+                if (isSorted) {
+                    System.out.println("✓ Prices ARE sorted!");
+                    return true;
+                } else {
+                    System.out.println("⚠ Prices NOT sorted, but continuing anyway");
+                    return false;
+                }
+            }
+            return true;
+        } catch (TimeoutException e) {
+            System.out.println("⚠ Sort completion timeout after 30 seconds");
+            return false;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    private List<Integer> extractPricesDirectly() {
+        try {
+            List<WebElement> cards = getFlightCards();
+            List<Integer> prices = new ArrayList<>();
+            for (WebElement card : cards) {
+                try {
+                    String priceText = getPriceText(card);
+                    int price = parsePrice(priceText);
+                    if (price <= 0) {
+                        price = extractPriceFromTextBlock(card.getText());
+                    }
+                    if (price > 0) {
+                        prices.add(price);
+                    }
+                } catch (org.openqa.selenium.StaleElementReferenceException e) {
+                    System.out.println("Stale element encountered, refreshing cards...");
+                    // Continue with the next card
+                    continue;
+                }
+            }
+            return prices;
+        } catch (org.openqa.selenium.StaleElementReferenceException e) {
+            System.out.println("Stale element encountered in extractPricesDirectly, retrying...");
+            // Retry once
+            try {
+                Thread.sleep(500);
+                List<WebElement> cards = getFlightCards();
+                List<Integer> prices = new ArrayList<>();
+                for (WebElement card : cards) {
+                    try {
+                        String priceText = getPriceText(card);
+                        int price = parsePrice(priceText);
+                        if (price <= 0) {
+                            price = extractPriceFromTextBlock(card.getText());
+                        }
+                        if (price > 0) {
+                            prices.add(price);
+                        }
+                    } catch (org.openqa.selenium.StaleElementReferenceException e2) {
+                        continue;
+                    }
+                }
+                return prices;
+            } catch (InterruptedException e2) {
+                Thread.currentThread().interrupt();
+                return new ArrayList<>();
+            }
+        }
     }
 
     private List<WebElement> getFlightCards() {
